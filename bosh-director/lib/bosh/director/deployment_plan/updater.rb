@@ -37,10 +37,46 @@ module Bosh::Director
         assembler.delete_unneeded_instances
 
         logger.info('Updating jobs')
+
+        parents = []
         deployment_plan.jobs.each do |bosh_job|
-          job.task_checkpoint
-          logger.info("Updating job: #{bosh_job.name}")
-          JobUpdater.new(deployment_plan, bosh_job).update
+          bosh_job.depends_on.each do |dep|
+            if not parents.include? dep
+              parents << dep
+            end
+          end
+        end
+
+        logger.info("All Parents : #{parents}")
+
+        num_jobs = 0
+        deployment_plan.jobs.each do |bosh_job|
+          num_jobs = num_jobs + 1
+        end
+
+        ThreadPool.new(:max_threads => num_jobs).wrap do |pool|
+          deployment_plan.jobs.each do |bosh_job|
+            pool.process do
+              loop do
+                deps_met = true
+                logger.info("Checking job dependencies for #{bosh_job.name}, #{bosh_job.depends_on}, #{parents}")
+                bosh_job.depends_on.each do |dep|
+                  if (parents.include? dep)
+                    deps_met = false
+                  end 
+                end
+                logger.info("Has job dependencies been met for #{bosh_job.name}: #{deps_met}")
+                break if deps_met
+                logger.info("Job #{bosh_job.name} waiting on dependent jobs to complete..")
+                sleep(10)
+              end
+              job.task_checkpoint
+              logger.info("Updating job: #{bosh_job.name}")
+              JobUpdater.new(deployment_plan, bosh_job).update
+              parents.delete(bosh_job.name)
+              logger.info("Deleted #{bosh_job.name} from #{parents}")
+            end
+          end
         end
 
         logger.info('Refilling resource pools')

@@ -67,6 +67,9 @@ module Bosh::Director
       #   interrupted
       attr_accessor :halt_exception
 
+      # @return [Array<String>] list of other jobs this job depends on
+      attr_accessor :depends_on
+
       # @param [Bosh::Director::DeploymentPlan] deployment Deployment plan
       # @param [Hash] job_spec Raw job spec from the deployment manifest
       # @return [Bosh::Director::DeploymentPlan::Job]
@@ -83,6 +86,7 @@ module Bosh::Director
         @job_spec = job_spec
 
         @release = nil
+        @depends_on = []
         @templates = []
         @all_properties = nil # All properties available to job
         @properties = nil # Actual job properties
@@ -103,6 +107,7 @@ module Bosh::Director
         parse_update_config
         parse_instances
         parse_networks
+        parse_depends_on
       end
 
       def self.is_legacy_spec?(job_spec)
@@ -217,6 +222,10 @@ module Bosh::Director
       def parse_name
         @name = safe_property(@job_spec, "name", :class => String)
         @canonical_name = canonical(@name)
+      end
+
+      def parse_depends_on
+        @depends_on = safe_property(@job_spec, "depends_on", :class => Array, :default => [])
       end
 
       def parse_release
